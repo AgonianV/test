@@ -10,23 +10,42 @@
     </style>
 </head>
 <body>
-    <h2>Мой первый Mini App! 👋</h2>
+    <h2>Мой Mini App</h2>
     <p>Твой ник: <b id="username">...</b></p>
-    <button onclick="sendData()">Отправить данные боту</button>
-    <button onclick="closeApp()">Закрыть</button>
+
+    <button onclick="sendLike()">❤️ Лайк</button>
+    <button onclick="buyProduct()">🛒 Купить (100₽)</button>
+    <button onclick="closeApp()">❌ Закрыть</button>
 
     <script>
         let tg = window.Telegram.WebApp;
-        tg.expand(); // Раскрыть на весь экран
+        tg.expand();
 
         // Показываем данные пользователя
         document.getElementById('username').innerText =
-            tg.initDataUnsafe.user?.username || 'неизвестно';
+            tg.initDataUnsafe.user?.username || 'Гость';
 
-        function sendData() {
-            tg.sendData(JSON.stringify({action: 'button_clicked'}));
+        // Функция отправки лайка
+        function sendLike() {
+            tg.sendData(JSON.stringify({
+                action: 'like',
+                user_id: tg.initDataUnsafe.user?.id,
+                time: new Date().toISOString()
+            }));
         }
 
+        // Функция покупки
+        function buyProduct() {
+            tg.sendData(JSON.stringify({
+                action: 'buy',
+                product: 'Товар X',
+                price: 100,
+                user_id: tg.initDataUnsafe.user?.id,
+                currency: 'RUB'
+            }));
+        }
+
+        // Закрыть мини-апп
         function closeApp() {
             tg.close();
         }
