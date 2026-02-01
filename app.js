@@ -337,45 +337,100 @@ function submitIncome() {
 }
 
 function submitExpense() {
-    const amountInput = document.getElementById('expense-amount-input');
-    const descriptionInput = document.getElementById('expense-description');
-    const categoryInput = document.getElementById('expense-category');
+    console.warn('Deprecated function called');
+}
 
-    const amount = amountInput ? amountInput.value : 0;
-    const description = descriptionInput ? descriptionInput.value : '';
-    const category = categoryInput ? categoryInput.value : '';
+function submitExpenses() {
+    const amountInputs = document.querySelectorAll('.expense-amount-input');
+    const categoryInputs = document.querySelectorAll('.expense-category-input');
 
-    if (!amount || amount <= 0) {
-        showNotification('Введите корректную сумму', 'error');
+    let totalAmount = 0;
+    let validCount = 0;
+
+    // Валидация и подсчет
+    for (let i = 0; i < amountInputs.length; i++) {
+        const amount = parseInt(amountInputs[i].value);
+        if (!isNaN(amount) && amount > 0) {
+            totalAmount += amount;
+            validCount++;
+        }
+    }
+
+    if (validCount === 0) {
+        showNotification('Введите хотя бы одну сумму', 'error');
         return;
     }
 
-    if (parseInt(amount) > AppState.finances.freeMoney) {
+    if (totalAmount > AppState.finances.freeMoney) {
         showNotification('Недостаточно средств', 'error');
         return;
     }
 
-    const newTransaction = {
-        id: Date.now(),
-        amount: parseInt(amount),
-        description: description || 'Без описания',
-        category: category || 'Другое',
-        date: new Date().toISOString().split('T')[0]
-    };
+    // Добавление транзакций
+    let addedCount = 0;
+    for (let i = 0; i < amountInputs.length; i++) {
+        const amount = parseInt(amountInputs[i].value);
+        if (isNaN(amount) || amount <= 0) continue;
 
-    AppState.transactions.expenses.push(newTransaction);
-    AppState.finances.expenses += newTransaction.amount;
-    AppState.finances.freeMoney -= newTransaction.amount;
+        const category = categoryInputs[i].value || 'Другое';
+        
+        const newTransaction = {
+            id: Date.now() + i,
+            amount: amount,
+            description: 'Расход',
+            category: category,
+            date: new Date().toISOString().split('T')[0]
+        };
 
-    sendToTelegramBot('expense_added', newTransaction);
+        AppState.transactions.expenses.push(newTransaction);
+        AppState.finances.expenses += amount;
+        AppState.finances.freeMoney -= amount;
+
+        sendToTelegramBot('expense_added', newTransaction);
+        addedCount++;
+    }
 
     updateUI();
     changeScreen('main');
-    showNotification(`Расход ${amount} ₽ добавлен`, 'success');
+    showNotification(`Добавлено ${addedCount} расходов на ${totalAmount} ₽`, 'success');
 
-    if (amountInput) amountInput.value = '';
-    if (descriptionInput) descriptionInput.value = '';
-    if (categoryInput) categoryInput.value = '';
+    // Сброс формы (оставляем одно поле)
+    const container = document.getElementById('expense-items-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="expense-item">
+                <div class="input-group">
+                    <label>Сумма (₽)</label>
+                    <input type="number" class="expense-amount-input" placeholder="0" min="1" step="100">
+                </div>
+                <div class="input-group">
+                    <label>Категория</label>
+                    <input type="text" class="expense-category-input" placeholder="Еда, такси...">
+                </div>
+                <hr class="separator">
+            </div>
+        `;
+    }
+}
+
+function addExpenseRow() {
+    const container = document.getElementById('expense-items-container');
+    if (!container) return;
+
+    const div = document.createElement('div');
+    div.className = 'expense-item';
+    div.innerHTML = `
+        <div class="input-group">
+            <label>Сумма (₽)</label>
+            <input type="number" class="expense-amount-input" placeholder="0" min="1" step="100">
+        </div>
+        <div class="input-group">
+            <label>Категория</label>
+            <input type="text" class="expense-category-input" placeholder="Еда, такси...">
+        </div>
+        <hr class="separator">
+    `;
+    container.appendChild(div);
 }
 
 // ===== НАВИГАЦИЯ И ФУТЕР =====
