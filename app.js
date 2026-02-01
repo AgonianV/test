@@ -1,10 +1,6 @@
 /**
  * Telegram Mini App - Финансовый трекер
- * Дополнено:
- * 1. Закрытие мини-аппа
- * 2. Экран добавления доходов/расходов
- * 3. Навигация через футер
- * 4. Связь с ботом через Web App Data
+ * Полная версия с работающей логикой
  */
 
 // ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
@@ -22,8 +18,6 @@ const AppState = {
         { id: 1, title: "Новый ноутбук", target: 88000, saved: 34000 },
         { id: 2, title: "Отпуск в Грузии", target: 150000, saved: 45000 }
     ],
-
-    // НОВОЕ: транзакции пользователя
     transactions: {
         income: [
             { id: 1, amount: 50000, description: "Зарплата", category: "Работа", date: "2024-03-10" },
@@ -34,108 +28,183 @@ const AppState = {
             { id: 2, amount: 7000, description: "Кофе", category: "Развлечения", date: "2024-03-12" }
         ]
     },
-
-    currentPage: 'main', // main, goals, stats, agent
-    insights: [...],
-    settings: {...}
+    currentPage: 'main',
+    insights: [
+        "Потрачено 6 700 ₽ на кофе за месяц",
+        "Через 12 дней конец отопительного сезона - ЖКХ будет стоить меньше",
+        "Самая крупная покупка месяца: 25 000 ₽ на технику"
+    ],
+    settings: {
+        currency: '₽',
+        theme: 'light'
+    },
+    sessionStart: Date.now()
 };
 
-const DOM = {...}; // (остаётся как было)
+const DOM = {
+    closeBtn: null,
+    appContent: null,
+    incomeAmount: null,
+    expenseAmount: null,
+    freeAmount: null,
+    currentMonth: null,
+    balanceChart: null,
+    chartDescription: null,
+    goalsList: null,
+    addGoalBtn: null,
+    insightsCarousel: null,
+    insightsDots: null,
+    bottomNav: null,
+    modalOverlay: null,
+    modal: null
+};
 
-// ===== ТЕЛЕГРАМ WEB APP - ДОПОЛНЕНИЯ =====
+// ===== ТЕЛЕГРАМ WEB APP =====
 
-/**
- * Отправка данных боту через Telegram WebApp
- */
+function initTelegramWebApp() {
+    if (typeof window.Telegram !== 'undefined' && window.Telegram.WebApp) {
+        tg = window.Telegram.WebApp;
+        console.log('Telegram WebApp инициализирован');
+
+        tg.expand();
+
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            AppState.user = tg.initDataUnsafe.user;
+        }
+
+        document.body.style.backgroundColor = tg.backgroundColor || '#f8f9fa';
+    } else {
+        console.warn('Telegram WebApp SDK не обнаружен. Запуск в standalone режиме.');
+        AppState.user = { id: 123, first_name: 'Тестовый', username: 'test_user' };
+    }
+}
+
+function closeMiniApp() {
+    if (tg && tg.sendData) {
+        tg.sendData(JSON.stringify({
+            event: 'app_closed',
+            data: {
+                screen: AppState.currentPage,
+                sessionTime: Date.now() - AppState.sessionStart
+            }
+        }));
+    }
+
+    if (tg && tg.close) {
+        tg.close();
+    } else {
+        alert('Приложение будет закрыто в Telegram');
+    }
+}
+
 function sendToTelegramBot(eventType, data) {
-    if (window.Telegram && Telegram.WebApp) {
-        // Способ 1: Отправка данных через Telegram
-        Telegram.WebApp.sendData(JSON.stringify({
+    if (tg && tg.sendData) {
+        tg.sendData(JSON.stringify({
             event: eventType,
             data: data,
             userId: AppState.user?.id,
             timestamp: Date.now()
         }));
+        console.log('Данные отправлены боту:', eventType);
+    }
+}
 
-        // Способ 2: Отправка уведомления в чат
-        Telegram.WebApp.showPopup({
-            title: 'Успешно',
-            message: 'Данные отправлены боту',
-            buttons: [{type: 'ok'}]
+// ===== УПРАВЛЕНИЕ DOM =====
+
+function cacheDOMElements() {
+    DOM.closeBtn = document.getElementById('close-btn');
+    DOM.appContent = document.getElementById('app-content');
+    DOM.incomeAmount = document.getElementById('income-amount');
+    DOM.expenseAmount = document.getElementById('expense-amount');
+    DOM.freeAmount = document.getElementById('free-amount');
+    DOM.currentMonth = document.getElementById('current-month');
+    DOM.balanceChart = document.getElementById('balance-chart');
+    DOM.chartDescription = document.getElementById('chart-description');
+    DOM.goalsList = document.getElementById('goals-list');
+    DOM.addGoalBtn = document.getElementById('add-goal-btn');
+    DOM.insightsCarousel = document.getElementById('insights-carousel');
+    DOM.insightsDots = document.getElementById('insights-dots');
+    DOM.bottomNav = document.getElementById('bottom-nav');
+    DOM.modalOverlay = document.getElementById('modal-overlay');
+    DOM.modal = document.getElementById('modal');
+}
+
+function setupEventListeners() {
+    // Кнопка закрытия
+    if (DOM.closeBtn) {
+        DOM.closeBtn.addEventListener('click', closeMiniApp);
+    }
+
+    // Кнопки "Добавить" в блоке баланса
+    document.querySelectorAll('.add-btn[data-type]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const type = this.getAttribute('data-type');
+            if (type === 'income') {
+                openAddIncomeScreen();
+            } else if (type === 'expense') {
+                openAddExpenseScreen();
+            }
         });
-    } else {
-        console.log('Данные для бота:', {eventType, data});
-        // Для тестирования вне Telegram
-        alert(`Данные отправлены (в Telegram): ${JSON.stringify(data)}`);
-    }
-}
+    });
 
-/**
- * Закрытие мини-аппа с уведомлением бота
- */
-function closeMiniApp() {
-    if (window.Telegram && Telegram.WebApp) {
-        // Сначала отправляем данные о закрытии
-        sendToTelegramBot('app_closed', {
-            lastAction: AppState.lastAction,
-            sessionTime: Date.now() - AppState.sessionStart
+    // Кнопка добавления цели
+    if (DOM.addGoalBtn) {
+        DOM.addGoalBtn.addEventListener('click', openAddGoalModal);
+    }
+
+    // Кнопки навигации в футере
+    document.querySelectorAll('.nav-btn[data-page]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const page = this.getAttribute('data-page');
+            navigateToPage(page);
         });
+    });
 
-        // Затем закрываем
-        Telegram.WebApp.close();
-    } else {
-        alert('Приложение закрыто (в Telegram будет закрыто)');
+    // Кнопка чата с ботом
+    const chatBtn = document.getElementById('chat-with-bot');
+    if (chatBtn) {
+        chatBtn.addEventListener('click', openChatWithBot);
     }
+
+    // Кнопки отправки форм
+    const incomeSubmitBtn = document.getElementById('income-submit-btn');
+    if (incomeSubmitBtn) {
+        incomeSubmitBtn.addEventListener('click', submitIncome);
+    }
+
+    const expenseSubmitBtn = document.getElementById('expense-submit-btn');
+    if (expenseSubmitBtn) {
+        expenseSubmitBtn.addEventListener('click', submitExpense);
+    }
+
+    // Кнопки назад
+    document.querySelectorAll('.back-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            changeScreen('main');
+        });
+    });
 }
 
-/**
- * Закрытие мини-аппа
- * Есть 2 варианта: мягкое закрытие (оставляет апп открытым для возврата)
- * и полное закрытие
- */
-function closeApp() {
-    if (!tg) {
-        console.log('Приложение закрыто (standalone режим)');
-        // В standalone режиме можно показать сообщение
-        alert('Приложение будет закрыто в Telegram');
-        return;
-    }
+// ===== УПРАВЛЕНИЕ ЭКРАНАМИ =====
 
-    // ВАРИАНТ 1: Мягкое закрытие (можно вернуться назад)
-    // tg.close();
-
-    // ВАРИАНТ 2: Полное закрытие с подтверждением
-    if (confirm('Закрыть приложение?')) {
-        tg.close();
-    }
-}
-
-// ===== ЭКРАНЫ ДОБАВЛЕНИЯ ТРАНЗАКЦИЙ =====
-
-/**
- * Открывает экран добавления дохода
- */
 function openAddIncomeScreen() {
     changeScreen('add-income');
 }
 
-/**
- * Открывает экран добавления расхода
- */
 function openAddExpenseScreen() {
     changeScreen('add-expense');
+    updateAvailableMoney();
 }
 
-/**
- * Универсальная функция смены экрана
- */
+function openAddGoalModal() {
+    alert('Добавление целей в разработке');
+}
+
 function changeScreen(screenName) {
-    // Скрываем все экраны
     document.querySelectorAll('.screen').forEach(screen => {
         screen.classList.remove('active');
     });
 
-    // Показываем нужный экран
     const targetScreen = document.getElementById(`${screenName}-screen`);
     if (targetScreen) {
         targetScreen.classList.add('active');
@@ -144,13 +213,104 @@ function changeScreen(screenName) {
     }
 }
 
-/**
- * Добавляет новый доход
- */
-function addIncomeTransaction(amount, description, category) {
+// ===== РАБОТА С ДАННЫМИ =====
+
+function loadInitialData() {
+    const now = new Date();
+    const monthNames = [
+        'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+        'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+    ];
+    const currentMonth = monthNames[now.getMonth()];
+    const currentYear = now.getFullYear();
+
+    AppState.currentMonth = `${currentMonth} ${currentYear}`;
+}
+
+function updateUI() {
+    updateBalanceUI();
+    updateChartUI();
+    updateGoalsUI();
+    updateMonthUI();
+}
+
+function updateBalanceUI() {
+    if (DOM.incomeAmount && DOM.expenseAmount && DOM.freeAmount) {
+        DOM.incomeAmount.textContent = formatCurrency(AppState.finances.income, AppState.finances.currency);
+        DOM.expenseAmount.textContent = formatCurrency(AppState.finances.expenses, AppState.finances.currency);
+        DOM.freeAmount.textContent = formatCurrency(AppState.finances.freeMoney, AppState.finances.currency);
+    }
+}
+
+function updateChartUI() {
+    if (DOM.chartDescription) {
+        const savingsPercentage = ((AppState.finances.freeMoney / AppState.finances.income) * 100).toFixed(1);
+        DOM.chartDescription.innerHTML = `
+            <p>В этом месяце вы сохранили <strong>${savingsPercentage}%</strong> от дохода.</p>
+            <p>Основные расходы: жильё, транспорт, питание.</p>
+        `;
+    }
+}
+
+function updateGoalsUI() {
+    if (!DOM.goalsList) return;
+
+    if (!AppState.goals || AppState.goals.length === 0) {
+        DOM.goalsList.innerHTML = '<div class="no-goals">Целей пока нет. Добавьте первую!</div>';
+        return;
+    }
+
+    const goalsHTML = AppState.goals.map(goal => {
+        const progressPercentage = Math.min((goal.saved / goal.target) * 100, 100);
+        const formattedSaved = formatCurrency(goal.saved, AppState.finances.currency);
+        const formattedTarget = formatCurrency(goal.target, AppState.finances.currency);
+
+        return `
+            <div class="goal-item" data-goal-id="${goal.id}">
+                <div class="goal-header">
+                    <div class="goal-title">${goal.title}</div>
+                    <div class="goal-amount">${formattedSaved} / ${formattedTarget}</div>
+                </div>
+                <div class="goal-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progressPercentage}%"></div>
+                    </div>
+                    <div class="progress-text">${progressPercentage.toFixed(1)}%</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    DOM.goalsList.innerHTML = goalsHTML;
+}
+
+function updateMonthUI() {
+    if (DOM.currentMonth && AppState.currentMonth) {
+        DOM.currentMonth.textContent = AppState.currentMonth;
+    }
+}
+
+function updateAvailableMoney() {
+    const availableElem = document.getElementById('available-money');
+    if (availableElem) {
+        availableElem.textContent = formatCurrency(AppState.finances.freeMoney, AppState.finances.currency);
+    }
+}
+
+// ===== ОБРАБОТКА ФОРМ =====
+
+function submitIncome() {
+    const amountInput = document.getElementById('income-amount-input');
+    const descriptionInput = document.getElementById('income-description');
+    const categoryInput = document.getElementById('income-category');
+
+    const amount = amountInput ? amountInput.value : 0;
+    const description = descriptionInput ? descriptionInput.value : '';
+    const category = categoryInput ? categoryInput.value : '';
+
     if (!amount || amount <= 0) {
         showNotification('Введите корректную сумму', 'error');
-        return false;
+        return;
     }
 
     const newTransaction = {
@@ -161,38 +321,38 @@ function addIncomeTransaction(amount, description, category) {
         date: new Date().toISOString().split('T')[0]
     };
 
-    // Добавляем в состояние
     AppState.transactions.income.push(newTransaction);
-
-    // Обновляем общий доход
     AppState.finances.income += newTransaction.amount;
     AppState.finances.freeMoney += newTransaction.amount;
 
-    // Отправляем на сервер бота
-    sendDataToBot('income_added', newTransaction);
+    sendToTelegramBot('income_added', newTransaction);
 
-    // Обновляем UI
     updateUI();
-
-    // Возвращаем на главную
     changeScreen('main');
+    showNotification(`Доход ${amount} ₽ добавлен`, 'success');
 
-    showNotification('Доход добавлен!', 'success');
-    return true;
+    if (amountInput) amountInput.value = '';
+    if (descriptionInput) descriptionInput.value = '';
+    if (categoryInput) categoryInput.value = '';
 }
 
-/**
- * Добавляет новый расход
- */
-function addExpenseTransaction(amount, description, category) {
+function submitExpense() {
+    const amountInput = document.getElementById('expense-amount-input');
+    const descriptionInput = document.getElementById('expense-description');
+    const categoryInput = document.getElementById('expense-category');
+
+    const amount = amountInput ? amountInput.value : 0;
+    const description = descriptionInput ? descriptionInput.value : '';
+    const category = categoryInput ? categoryInput.value : '';
+
     if (!amount || amount <= 0) {
         showNotification('Введите корректную сумму', 'error');
-        return false;
+        return;
     }
 
-    if (amount > AppState.finances.freeMoney) {
+    if (parseInt(amount) > AppState.finances.freeMoney) {
         showNotification('Недостаточно средств', 'error');
-        return false;
+        return;
     }
 
     const newTransaction = {
@@ -203,161 +363,45 @@ function addExpenseTransaction(amount, description, category) {
         date: new Date().toISOString().split('T')[0]
     };
 
-    // Добавляем в состояние
     AppState.transactions.expenses.push(newTransaction);
-
-    // Обновляем общие расходы и свободные деньги
     AppState.finances.expenses += newTransaction.amount;
     AppState.finances.freeMoney -= newTransaction.amount;
 
-    // Отправляем на сервер бота
-    sendDataToBot('expense_added', newTransaction);
+    sendToTelegramBot('expense_added', newTransaction);
 
-    // Обновляем UI
     updateUI();
-
-    // Возвращаем на главную
     changeScreen('main');
+    showNotification(`Расход ${amount} ₽ добавлен`, 'success');
 
-    showNotification('Расход добавлен!', 'success');
-    return true;
+    if (amountInput) amountInput.value = '';
+    if (descriptionInput) descriptionInput.value = '';
+    if (categoryInput) categoryInput.value = '';
 }
 
-// ===== СВЯЗЬ С ТЕЛЕГРАМ БОТОМ =====
+// ===== НАВИГАЦИЯ И ФУТЕР =====
 
-/**
- * Отправка данных боту через Web App
- * Telegram предоставляет несколько способов:
- * 1. tg.sendData() - отправка данных обратно в бот
- * 2. Fetch API на ваш сервер
- */
-function sendDataToBot(eventType, data) {
-    // Способ 1: Через Telegram WebApp (если бот настроен)
-    if (tg && tg.sendData) {
-        const message = {
-            event: eventType,
-            data: data,
-            userId: AppState.user?.id,
-            timestamp: Date.now()
-        };
-
-        tg.sendData(JSON.stringify(message));
-        console.log('Данные отправлены боту через tg.sendData:', message);
-    }
-
-    // Способ 2: Через прямой HTTP запрос на ваш сервер
-    // Раскомментируйте и настройте под свой сервер:
-    /*
-    fetch('https://ваш-сервер.ком/bot-webhook', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            event: eventType,
-            data: data,
-            initData: tg?.initData, // Данные от Telegram для авторизации
-            userId: AppState.user?.id
-        })
-    })
-    .then(response => response.json())
-    .then(data => console.log('Ответ от сервера:', data))
-    .catch(error => console.error('Ошибка отправки:', error));
-    */
-}
-
-/**
- * Получение данных от бота
- * Бот может отправлять данные через:
- * 1. Web App открытие с параметрами
- * 2. Ответ на запросы
- */
-function receiveDataFromBot() {
-    // Telegram может передавать данные через start_param
-    if (tg && tg.initDataUnsafe.start_param) {
-        const startParam = tg.initDataUnsafe.start_param;
-        console.log('Параметры запуска от бота:', startParam);
-        // Можно распарсить параметры и выполнить действия
-    }
-
-    // Или бот может обновлять данные через общие методы
-    // Например, запрашиваем обновления каждые 30 секунд
-    setInterval(fetchUpdatesFromBot, 30000);
-}
-
-/**
- * Запрос обновлений от бота
- */
-function fetchUpdatesFromBot() {
-    if (!AppState.user?.id) return;
-
-    // Пример запроса к вашему API
-    /*
-    fetch(`https://ваш-сервер.ком/api/user/${AppState.user.id}/updates`)
-        .then(response => response.json())
-        .then(updates => {
-            if (updates.newTransactions) {
-                // Обновляем данные в приложении
-                processBotUpdates(updates);
-            }
-        })
-        .catch(error => console.error('Ошибка запроса обновлений:', error));
-    */
-}
-
-// ===== ФУТЕР И НАВИГАЦИЯ =====
-
-/**
- * Инициализация футера
- */
 function initFooter() {
-    // Показываем футер
     if (DOM.bottomNav) {
         DOM.bottomNav.style.display = 'flex';
     }
-
-    // Обработчики для кнопок навигации
-    document.querySelectorAll('.nav-btn[data-page]').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const page = this.getAttribute('data-page');
-            navigateToPage(page);
-        });
-    });
-
-    // Кнопка разговора с ботом
-    const chatBtn = document.getElementById('chat-with-bot');
-    if (chatBtn) {
-        chatBtn.addEventListener('click', openChatWithBot);
-    }
-
     updateFooterActiveTab();
 }
 
-/**
- * Навигация по страницам
- */
 function navigateToPage(page) {
     if (page === 'main') {
         changeScreen('main');
     } else if (page === 'goals') {
-        // В будущем можно сделать экран целей
         showNotification('Экран целей в разработке', 'info');
-        // changeScreen('goals');
     } else if (page === 'stats') {
         showNotification('Статистика в разработке', 'info');
-        // changeScreen('stats');
     } else if (page === 'agent') {
         showNotification('Финансовый агент в разработке', 'info');
-        // changeScreen('agent');
     }
 
     AppState.currentPage = page;
     updateFooterActiveTab();
 }
 
-/**
- * Обновляет активную вкладку в футере
- */
 function updateFooterActiveTab() {
     document.querySelectorAll('.nav-btn').forEach(btn => {
         const page = btn.getAttribute('data-page');
@@ -369,38 +413,62 @@ function updateFooterActiveTab() {
     });
 }
 
-/**
- * Открывает чат с ботом
- */
 function openChatWithBot() {
-    if (!tg) {
-        showNotification('В Telegram откройте чат с ботом', 'info');
-        return;
+    if (tg && tg.openLink) {
+        tg.openLink('https://t.me/your_finance_bot');
+    } else {
+        alert('Откройте бота @your_finance_bot в Telegram');
     }
+}
 
-    // Telegram WebApp может открыть ссылку на бота
-    // tg.openLink('https://t.me/your_bot_username');
+// ===== КАРУСЕЛЬ ИНСАЙТОВ =====
 
-    // Или показать сообщение
-    tg.showPopup({
-        title: 'Чат с ботом',
-        message: 'Для общения с финансовым ботом перейдите в чат @your_finance_bot',
-        buttons: [
-            {id: 'open', type: 'default', text: 'Открыть бота'},
-            {type: 'cancel', text: 'Закрыть'}
-        ]
-    }, function(buttonId) {
-        if (buttonId === 'open') {
-            tg.openLink('https://t.me/your_finance_bot');
-        }
+function initInsightsCarousel() {
+    if (!DOM.insightsCarousel || !DOM.insightsDots) return;
+
+    const insights = AppState.insights;
+    if (insights.length === 0) return;
+
+    // Создаем точки для навигации
+    let dotsHTML = '';
+    insights.forEach((_, index) => {
+        dotsHTML += `<span class="dot ${index === 0 ? 'active' : ''}" data-index="${index}"></span>`;
     });
+    DOM.insightsDots.innerHTML = dotsHTML;
+
+    // Добавляем обработчики для точек
+    DOM.insightsDots.querySelectorAll('.dot').forEach(dot => {
+        dot.addEventListener('click', function() {
+            const index = parseInt(this.getAttribute('data-index'));
+            showInsight(index);
+        });
+    });
+
+    // Автопереключение каждые 5 секунд
+    let currentIndex = 0;
+    setInterval(() => {
+        currentIndex = (currentIndex + 1) % insights.length;
+        showInsight(currentIndex);
+    }, 5000);
+}
+
+function showInsight(index) {
+    const insights = document.querySelectorAll('.insight');
+    const dots = document.querySelectorAll('.dot');
+
+    insights.forEach(insight => insight.classList.remove('active'));
+    dots.forEach(dot => dot.classList.remove('active'));
+
+    if (insights[index]) {
+        insights[index].classList.add('active');
+    }
+    if (dots[index]) {
+        dots[index].classList.add('active');
+    }
 }
 
 // ===== УТИЛИТЫ =====
 
-/**
- * Показывает уведомление
- */
 function showNotification(message, type = 'info') {
     if (tg && tg.showPopup) {
         tg.showPopup({
@@ -410,61 +478,12 @@ function showNotification(message, type = 'info') {
             buttons: [{type: 'ok'}]
         });
     } else {
-        // В standalone режиме
         alert(message);
     }
 }
 
-/**
- * Форматирует валюту
- */
 function formatCurrency(amount, currency) {
     return new Intl.NumberFormat('ru-RU').format(amount) + ' ' + currency;
-}
-
-// Обработка кнопки закрытия
-DOM.closeBtn?.addEventListener('click', function() {
-    // Отправляем событие закрытия боту
-    sendToTelegramBot('app_closed', {
-        screen: AppState.currentPage,
-        transactionsAdded: AppState.transactions.addedCount || 0
-    });
-
-    // Закрываем мини-апп
-    if (tg && tg.close) {
-        tg.close();
-    }
-});
-
-// Обработка добавления дохода
-function submitIncome() {
-    const amount = document.getElementById('income-amount-input').value;
-    const description = document.getElementById('income-description').value;
-    const category = document.getElementById('income-category').value;
-
-    if (!amount || amount <= 0) {
-        showNotification('Введите сумму', 'error');
-        return;
-    }
-
-    const transactionData = {
-        amount: parseInt(amount),
-        description: description || 'Без описания',
-        category: category || 'Другое',
-        date: new Date().toISOString().split('T')[0]
-    };
-
-    // Отправляем данные боту
-    sendToTelegramBot('income_added', transactionData);
-
-    // Обновляем локальное состояние
-    addIncomeTransaction(amount, description, category);
-
-    // Показываем уведомление
-    showNotification(`Доход ${amount} ₽ добавлен`, 'success');
-
-    // Возвращаем на главную
-    changeScreen('main');
 }
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
@@ -476,15 +495,36 @@ function initApp() {
     cacheDOMElements();
     setupEventListeners();
     loadInitialData();
-    initFooter(); // НОВОЕ: инициализируем футер
+    initFooter();
     updateUI();
     initInsightsCarousel();
-
-    // Получаем данные от бота при старте
-    receiveDataFromBot();
 
     console.log('✅ Приложение инициализировано');
 }
 
 // Запуск приложения при загрузке
 document.addEventListener('DOMContentLoaded', initApp);
+
+// Тестирование без Telegram
+window.addEventListener('load', function() {
+    if (!window.Telegram) {
+        console.log('Тестовый режим (без Telegram)');
+        // Создаем заглушку для тестирования
+        window.Telegram = {
+            WebApp: {
+                initDataUnsafe: { user: { id: 123, first_name: 'Тест' } },
+                expand: () => console.log('App expanded'),
+                sendData: (data) => console.log('Data sent:', data),
+                close: () => alert('App closed'),
+                showPopup: (params) => alert(params.message),
+                openLink: (url) => alert('Open: ' + url)
+            }
+        };
+
+        // Переинициализируем
+        setTimeout(() => {
+            tg = window.Telegram.WebApp;
+            initApp();
+        }, 100);
+    }
+});
