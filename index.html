@@ -199,23 +199,28 @@
 
     <main class="app-content">
         <div class="form-container">
-            <div class="input-group">
-                <label for="expense-amount-input">Сумма (₽)</label>
-                <input type="number" id="expense-amount-input" placeholder="0" min="1" step="100">
+            <div id="expense-items-container">
+                <!-- Поля будут добавляться сюда -->
+                <div class="expense-item">
+                    <div class="input-group">
+                        <label>Сумма (₽)</label>
+                        <input type="number" class="expense-amount-input" placeholder="0" min="1" step="100">
+                    </div>
+                    <div class="input-group">
+                        <label>Категория</label>
+                        <input type="text" class="expense-category-input" placeholder="Еда, такси...">
+                    </div>
+                    <hr class="separator">
+                </div>
+            </div>
+
+            <button class="add-more-btn" onclick="addExpenseRow()">+ Добавить ещё позицию</button>
+            
+            <div class="input-group mt-3">
                 <div class="hint">Свободно: <span id="available-money">0 ₽</span></div>
             </div>
 
-            <div class="input-group">
-                <label for="expense-description">Описание</label>
-                <input type="text" id="expense-description" placeholder="Продукты, транспорт...">
-            </div>
-
-            <div class="input-group">
-                <label for="expense-category">Категория (необязательно)</label>
-                <input type="text" id="expense-category" placeholder="Еда, развлечения...">
-            </div>
-
-            <button class="submit-btn" onclick="submitExpense()">Добавить расход</button>
+            <button class="submit-btn" onclick="submitExpenses()">Добавить расходы</button>
         </div>
     </main>
 </div>

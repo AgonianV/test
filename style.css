@@ -511,7 +511,39 @@ body {
     color: var(--text-primary);
 }
 
-/* Формы добавления транзакций */
+.expense-item {
+    background-color: #fcfcfc;
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 12px;
+}
+
+.separator {
+    border: none;
+    border-top: 1px dashed var(--border-color);
+    margin: 12px 0 0 0;
+    display: none; /* Скрываем в item'е, используем margin */
+}
+
+.add-more-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: transparent;
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 16px;
+}
+
+.add-more-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background-color: rgba(36, 129, 204, 0.05);
+}
 .form-container {
     padding: var(--spacing-lg);
     max-width: 500px;
