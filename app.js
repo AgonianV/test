@@ -504,27 +504,3 @@ function initApp() {
 
 // Запуск приложения при загрузке
 document.addEventListener('DOMContentLoaded', initApp);
-
-// Тестирование без Telegram
-window.addEventListener('load', function() {
-    if (!window.Telegram) {
-        console.log('Тестовый режим (без Telegram)');
-        // Создаем заглушку для тестирования
-        window.Telegram = {
-            WebApp: {
-                initDataUnsafe: { user: { id: 123, first_name: 'Тест' } },
-                expand: () => console.log('App expanded'),
-                sendData: (data) => console.log('Data sent:', data),
-                close: () => alert('App closed'),
-                showPopup: (params) => alert(params.message),
-                openLink: (url) => alert('Open: ' + url)
-            }
-        };
-
-        // Переинициализируем
-        setTimeout(() => {
-            tg = window.Telegram.WebApp;
-            initApp();
-        }, 100);
-    }
-});
